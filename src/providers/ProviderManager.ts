@@ -36,6 +36,10 @@ export class ProviderManager {
     return results;
   }
 
+  async getAvailableUsage(): Promise<ProviderUsage[]> {
+    return this.getProviderUsage();
+  }
+
   private getUnavailableUsage(
     provider: UsageProvider
   ): ProviderUsage {

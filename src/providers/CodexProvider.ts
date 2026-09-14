@@ -17,11 +17,18 @@ export class CodexProvider implements UsageProvider {
       id: this.id,
       name: this.name,
       connected: true,
-      metrics: [],
+      metrics: [
+        {
+          label: "Codex",
+          value: 0,
+          displayValue: "--",
+          subtitle: version ?? "Codex CLI detected",
+        },
+      ],
       stats: [
         {
-          label: "Version",
-          value: version ?? "Detected",
+          label: "Status",
+          value: "Connected",
         },
       ],
     };

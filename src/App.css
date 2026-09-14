@@ -154,36 +154,139 @@ button {
   font-size: 11px;
 }
 
-.provider-list {
+.providers-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
-.provider-section {
+.provider-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
 }
 
-.provider-title-row {
+.provider-card + .provider-card {
+  padding-top: 14px;
+
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.provider-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
 
-  font-size: 13px;
+.provider-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  font-size: 12px;
   font-weight: 600;
 }
 
+.provider-dot {
+  width: 6px;
+  height: 6px;
+
+  border-radius: 50%;
+
+  background: #555555;
+}
+
+.provider-dot.connected {
+  background: #ffffff;
+
+  box-shadow:
+    0 0 7px rgba(255, 255, 255, 0.45);
+}
+
 .provider-status {
+  color: #777777;
+  font-size: 10px;
+}
+
+.provider-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.openai-connection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.openai-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+}
+
+.openai-key-input {
+  min-width: 0;
+  height: 30px;
+
+  padding: 0 10px;
+
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+
+  background: rgba(255, 255, 255, 0.06);
   color: #ffffff;
 
   font-size: 11px;
-  font-weight: 500;
 }
 
-.provider-status-muted {
+.openai-key-input::placeholder {
   color: #777777;
+}
+
+.openai-button {
+  height: 30px;
+
+  padding: 0 10px;
+
+  border: 0;
+  border-radius: 8px;
+
+  background: #ffffff;
+  color: #111111;
+
+  cursor: pointer;
+
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.openai-button:hover:not(:disabled) {
+  background: #d8d8d8;
+}
+
+.openai-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.openai-button-muted {
+  background: #2f2f2f;
+  color: #d0d0d0;
+}
+
+.openai-button-muted:hover:not(:disabled) {
+  background: #3b3b3b;
+}
+
+.openai-message {
+  margin: 0;
+
+  color: #8b8b8b;
+
+  font-size: 10px;
+  line-height: 1.35;
 }
 
 .divider {

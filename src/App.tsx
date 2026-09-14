@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   getCurrentWindow,
   LogicalSize,
@@ -8,8 +8,8 @@ import { providerManager } from "./providers";
 
 import "./App.css";
 
-import UsageMetric from "./components/UsageMetric";
-import UsageStat from "./components/UsageStat";
+import OpenAIConnection from "./components/OpenAIConnection";
+import ProviderCard from "./components/ProviderCard";
 
 function App() {
   const [collapsed, setCollapsed] = useState(false);
@@ -18,22 +18,22 @@ function App() {
 
   const appWindow = getCurrentWindow();
 
-  useEffect(() => {
-    const loadUsage = async () => {
-      try {
-        const providerUsage =
-          await providerManager.getProviderUsage();
+  const loadUsage = useCallback(async () => {
+    try {
+      const providerUsage =
+        await providerManager.getAvailableUsage();
 
-        setProviders(providerUsage);
-      } catch (error) {
-        console.error("Failed to load usage", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadUsage();
+      setProviders(providerUsage);
+    } catch (error) {
+      console.error("Failed to load usage", error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadUsage();
+  }, [loadUsage]);
 
   const collapseWidget = async () => {
     setCollapsed(true);
@@ -83,12 +83,9 @@ function App() {
     );
   }
 
-  const activeProvider = providers.find(
+  const primaryProvider = providers.find(
     (provider) => provider.connected
   );
-  const connectedCount = providers.filter(
-    (provider) => provider.connected
-  ).length;
 
   return (
     <main
@@ -100,18 +97,18 @@ function App() {
           <div className="collapsed-left">
             <div
               className={`status-dot ${
-                activeProvider
+                primaryProvider
                   ? ""
                   : "status-dot-muted"
               }`}
             />
             <span className="collapsed-value">
-              {activeProvider?.name ?? "TokenBar"}
+              {primaryProvider?.metrics[0]?.displayValue ?? "--"}
             </span>
           </div>
 
           <span className="collapsed-cost">
-            {connectedCount}/{providers.length} connected
+            {primaryProvider?.name ?? "No provider"}
           </span>
 
           <button
@@ -147,61 +144,21 @@ function App() {
             </div>
           </div>
 
-          <section
-            className="provider-list"
+          <div
+            className="providers-list"
             data-tauri-drag-region
           >
+            <OpenAIConnection
+              onConnectionChange={loadUsage}
+            />
+
             {providers.map((provider) => (
-              <section
-                className="provider-section"
+              <ProviderCard
                 key={provider.id}
-                data-tauri-drag-region
-              >
-                <div
-                  className="provider-title-row"
-                  data-tauri-drag-region
-                >
-                  <span data-tauri-drag-region>
-                    {provider.name}
-                  </span>
-
-                  <span
-                    className={
-                      provider.connected
-                        ? "provider-status"
-                        : "provider-status provider-status-muted"
-                    }
-                    data-tauri-drag-region
-                  >
-                    {provider.connected
-                      ? "Connected"
-                      : "Unavailable"}
-                  </span>
-                </div>
-
-                {provider.metrics.map((metric) => (
-                  <UsageMetric
-                    key={`${provider.id}-${metric.label}`}
-                    metric={metric}
-                  />
-                ))}
-
-                {provider.stats.length > 0 && (
-                  <section
-                    className="stats-grid"
-                    data-tauri-drag-region
-                  >
-                    {provider.stats.map((stat) => (
-                      <UsageStat
-                        key={`${provider.id}-${stat.label}`}
-                        stat={stat}
-                      />
-                    ))}
-                  </section>
-                )}
-              </section>
+                provider={provider}
+              />
             ))}
-          </section>
+          </div>
         </>
       )}
     </main>
