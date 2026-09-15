@@ -1,54 +1,47 @@
-import type { ProviderUsage } from "../types/usage";
+﻿import type { ProviderUsage } from "../types/usage";
 import type { UsageProvider } from "./UsageProvider";
 
+export type ProviderError = { providerId: string; providerName: string; message: string };
+export type ProviderLoadResult = { providers: ProviderUsage[]; errors: ProviderError[] };
+
+export function classifyProviderError(message: string): "auth-error" | "unavailable" {
+  return /\b(401|403)\b|unauthori[sz]ed|forbidden|not logged|sign.in|authentication|expired.*token|admin.*access/i.test(message)
+    ? "auth-error" : "unavailable";
+}
+
 export class ProviderManager {
-  private providers: UsageProvider[];
+  constructor(private providers: UsageProvider[]) {}
 
-  constructor(providers: UsageProvider[]) {
-    this.providers = providers;
-  }
-
-  async getProviderUsage(): Promise<ProviderUsage[]> {
-    const results: ProviderUsage[] = [];
-
-    for (const provider of this.providers) {
+  async getAvailableUsage(enabledProviderIds?: string[]): Promise<ProviderLoadResult> {
+    const results = await Promise.all(this.providers.filter(provider =>
+      !enabledProviderIds || enabledProviderIds.includes(provider.id)
+    ).map(async provider => {
       try {
-        const available = await provider.isAvailable();
-
-        if (!available) {
-          results.push(this.getUnavailableUsage(provider));
-          continue;
+        if (!await provider.isAvailable()) {
+          return { usage: {
+            id: provider.id, name: provider.name, connected: false,
+            state: "unavailable", metrics: [], stats: [],
+            message: provider.id === "codex"
+              ? "Install Codex and sign in to see your subscription usage."
+              : "Connect an organization Admin API key in Settings to see API usage.",
+          } as ProviderUsage };
         }
-
-        const usage = await provider.getUsage();
-
-        results.push(usage);
+        return { usage: { ...await provider.getUsage(), updatedAt: new Date().toISOString() } };
       } catch (error) {
-        console.error(
-          `Failed to load provider: ${provider.name}`,
-          error
-        );
-
-        results.push(this.getUnavailableUsage(provider));
+        const message = error instanceof Error ? error.message : String(error);
+        const state = classifyProviderError(message);
+        return {
+          usage: {
+            id: provider.id, name: provider.name, connected: false, state, metrics: [], stats: [],
+            message: state === "auth-error"
+              ? (provider.id === "codex" ? "Sign in to Codex again, then refresh." : "Reconnect an Admin API key with organization usage access in Settings.")
+              : "Usage could not be refreshed. Try again shortly. Details are available in About.",
+          } as ProviderUsage,
+          error: { providerId: provider.id, providerName: provider.name, message },
+        };
       }
-    }
-
-    return results;
-  }
-
-  async getAvailableUsage(): Promise<ProviderUsage[]> {
-    return this.getProviderUsage();
-  }
-
-  private getUnavailableUsage(
-    provider: UsageProvider
-  ): ProviderUsage {
-    return {
-      id: provider.id,
-      name: provider.name,
-      connected: false,
-      metrics: [],
-      stats: [],
-    };
+    }));
+    return { providers: results.map(result => result.usage), errors: results.flatMap(result => result.error ? [result.error] : []) };
   }
 }
+

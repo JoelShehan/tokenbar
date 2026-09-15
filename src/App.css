@@ -30,7 +30,8 @@ button {
 
 .widget {
   width: 100%;
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
 
   padding: 18px;
 
@@ -59,6 +60,20 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.widget-content {
+  width: 100%;
+
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+
+  min-height: 0;
+}
+
+.widget.settings-open .widget-content {
+  height: 100%;
 }
 
 .brand {
@@ -100,6 +115,43 @@ button {
 
 .menu-button:hover {
   color: #ffffff;
+}
+
+.refresh-button {
+  border: 0;
+  background: transparent;
+
+  color: #777777;
+
+  cursor: pointer;
+
+  font-size: 15px;
+
+  transition:
+    color 0.15s ease,
+    transform 0.2s ease;
+}
+
+.refresh-button:hover {
+  color: #ffffff;
+}
+
+.refresh-button:disabled {
+  cursor: default;
+}
+
+.refresh-button.refreshing {
+  animation: refresh-spin 0.8s linear infinite;
+}
+
+@keyframes refresh-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .usage-section {
@@ -157,17 +209,33 @@ button {
 .providers-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.providers-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.providers-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .provider-card {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+
+  flex-shrink: 0;
 }
 
 .provider-card + .provider-card {
-  padding-top: 14px;
+  padding-top: 12px;
 
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -211,7 +279,7 @@ button {
 .provider-content {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .openai-connection {
@@ -289,6 +357,152 @@ button {
   line-height: 1.35;
 }
 
+.settings-panel {
+  height: 100%;
+  min-height: 0;
+
+  padding: 16px;
+
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+
+  background: #181818;
+
+  overflow-y: auto;
+}
+
+.widget.settings-open .settings-panel {
+  height: auto;
+  flex: 1;
+}
+
+.settings-panel::-webkit-scrollbar {
+  width: 4px;
+}
+
+.settings-panel::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.preferences {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.setting-row > div,
+.setting-label-row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.setting-row strong,
+.setting-label-row strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.setting-row span,
+.setting-label-row span {
+  color: #686868;
+  font-size: 9px;
+}
+
+.setting-row select {
+  padding: 5px 7px;
+
+  border: 1px solid
+    rgba(255, 255, 255, 0.1);
+
+  border-radius: 6px;
+
+  background: #101010;
+  color: #aaaaaa;
+
+  font-size: 9px;
+
+  outline: none;
+}
+
+.setting-row input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+
+  cursor: pointer;
+}
+
+.setting-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setting-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.setting-column input[type="range"] {
+  width: 100%;
+
+  cursor: pointer;
+}
+
+.settings-divider {
+  width: 100%;
+  height: 1px;
+
+  margin: 18px 0;
+
+  background:
+    rgba(255, 255, 255, 0.08);
+}
+
+.provider-errors {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+
+  flex-shrink: 0;
+}
+
+.provider-error {
+  display: flex;
+  justify-content: space-between;
+
+  padding: 7px 9px;
+
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 7px;
+
+  color: #777777;
+
+  font-size: 9px;
+}
+
+.widget-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  color: #5f5f5f;
+
+  font-size: 9px;
+
+  flex-shrink: 0;
+}
+
 .divider {
   width: 100%;
   height: 1px;
@@ -300,7 +514,7 @@ button {
   display: grid;
   grid-template-columns: 1fr 1fr;
 
-  gap: 12px;
+  gap: 10px 12px;
 }
 
 .stat {
@@ -355,6 +569,31 @@ button {
   border-radius: 999px;
 }
 
+.widget.compact {
+  gap: 12px;
+  padding: 14px;
+}
+
+.widget.compact .widget-content {
+  gap: 12px;
+}
+
+.widget.compact .providers-list {
+  gap: 10px;
+}
+
+.widget.compact .provider-card {
+  gap: 10px;
+}
+
+.widget.compact .provider-content {
+  gap: 10px;
+}
+
+.widget.compact .usage-section {
+  gap: 6px;
+}
+
 .collapsed-view {
   display: flex;
   align-items: center;
@@ -389,3 +628,59 @@ button {
   color: #7d7d7d;
   font-size: 12px;
 }
+
+/* Shared controls and finished preferences surfaces. */
+button { cursor: pointer; }
+button:disabled { cursor: wait; opacity: .5; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid #bcdcc4; outline-offset: 3px;
+}
+.header-actions button, .collapsed-view button {
+  border: 0; background: transparent; color: #b8b8b8; border-radius: 6px;
+  min-width: 26px; min-height: 26px; padding: 2px; font-size: 18px;
+}
+.header-actions button:hover, .collapsed-view button:hover { background: #333; color: white; }
+.header-actions .refreshing { animation: refresh-spin 1s linear infinite; }
+.collapsed-view { gap: 8px; width: 100%; height: 100%; }
+.collapsed-view .status-dot { flex: 0 0 7px; }
+.collapsed-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.collapsed-cost { margin-left: auto; font-size: 10px; white-space: nowrap; }
+.widget.collapsed, .widget.collapsed.compact { padding: 10px 12px; }
+.widget-content { flex: 1; }
+.widget-header { flex-shrink: 0; }
+.provider-message, .section-description { margin: 0; color: #a2a2a2; font-size: 11px; line-height: 1.55; }
+.provider-updated { margin: 0; color: #8e8e8e; font-size: 10px; }
+.provider-status { color: #aaa; }
+.usage-subtitle { color: #a2a2a2; line-height: 1.4; }
+.stat-label, .widget-footer { color: #9a9a9a; }
+.stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.stat strong { font-size: 13px; overflow-wrap: anywhere; }
+.empty-state { padding: 20px 0; color: #aaa; font-size: 12px; line-height: 1.6; }
+.empty-state strong { color: #eee; }
+.text-button { border: 0; padding: 0; color: #cbe6d0; background: transparent; font-size: inherit; }
+.settings-panel { padding: 0 2px 8px; border: 0; border-radius: 0; background: transparent; }
+.screen-tabs { display: flex; gap: 4px; background: #111; padding: 4px; border-radius: 9px; margin-bottom: 20px; }
+.screen-tabs button { flex: 1; border: 0; background: transparent; color: #999; padding: 8px; border-radius: 6px; font-size: 12px; }
+.screen-tabs button[aria-current="page"] { background: #323232; color: white; }
+.settings-panel h1 { font-size: 18px; margin: 0 0 6px; }
+.settings-panel h2 { font-size: 12px; margin: 24px 0 10px; color: #eee; }
+fieldset { min-width: 0; margin: 18px 0 0; padding: 0; border: 0; }
+.setting-row { gap: 8px; }
+.setting-row strong, .setting-label-row strong { font-size: 12px; }
+.setting-row span, .setting-label-row span { color: #999; font-size: 10px; line-height: 1.4; }
+.setting-row select { font-size: 11px; }
+.setting-row input[type="checkbox"] { width: 17px; height: 17px; accent-color: #cbe6d0; flex-shrink: 0; }
+.setting-column input { accent-color: #cbe6d0; }
+.openai-form { grid-template-columns: 1fr 1fr; }
+.openai-key-input { grid-column: 1 / -1; width: 100%; height: 36px; }
+.openai-button { height: 34px; }
+.openai-message { color: #c6c6c6; overflow-wrap: anywhere; }
+.action-row, .about-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.action-row button, .about-links button, .secondary-button { border: 1px solid #444; background: #292929; color: #ddd; border-radius: 7px; padding: 8px 10px; font-size: 11px; }
+.version-badge { display: inline-block; border: 1px solid #444; border-radius: 20px; padding: 5px 10px; color: #ccc; font-size: 11px; }
+.diagnostics { width: 100%; height: 156px; resize: vertical; margin: 12px 0; padding: 10px; background: #111; color: #bbb; border: 1px solid #444; border-radius: 8px; font: 10px/1.6 monospace; }
+.notice { display: flex; gap: 8px; justify-content: space-between; flex-shrink: 0; padding: 10px; border-radius: 8px; background: #3c3224; color: #eedbbc; font-size: 11px; line-height: 1.4; }
+.notice button { border: 0; background: transparent; color: inherit; }
+.pulse { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

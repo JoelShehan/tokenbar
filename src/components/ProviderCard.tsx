@@ -35,7 +35,7 @@ function ProviderCard({ provider }: Props) {
           className="provider-status"
           data-tauri-drag-region
         >
-          {provider.connected ? "Connected" : "Offline"}
+          {{ connected: "Connected", "no-usage": "No usage", unavailable: "Unavailable", "auth-error": "Sign-in required" }[provider.state ?? (provider.connected ? "connected" : "unavailable")]}
         </span>
       </div>
 
@@ -43,6 +43,7 @@ function ProviderCard({ provider }: Props) {
         className="provider-content"
         data-tauri-drag-region
       >
+        {provider.message && <p className="provider-message">{provider.message}</p>}
         {provider.metrics.map((metric) => (
           <UsageMetric
             key={`${provider.id}-${metric.label}`}
@@ -70,6 +71,7 @@ function ProviderCard({ provider }: Props) {
             </div>
           </>
         )}
+        {provider.updatedAt && <p className="provider-updated">Updated {new Date(provider.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>}
       </div>
     </section>
   );

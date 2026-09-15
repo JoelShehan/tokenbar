@@ -18,7 +18,7 @@ function OpenAIConnection({ onConnectionChange }: Props) {
       setConnected(hasKey);
     };
 
-    loadConnectionState();
+    void loadConnectionState().catch(() => setMessage("Could not read the saved connection."));
   }, []);
 
   const saveKey = async (event: FormEvent) => {
@@ -37,27 +37,11 @@ function OpenAIConnection({ onConnectionChange }: Props) {
         apiKey: apiKey.trim(),
       });
 
-      const valid =
-        await invoke<boolean>("validate_openai_key");
-
-      if (!valid) {
-        await invoke("delete_openai_key");
-
-        setConnected(false);
-        setMessage(
-          "Invalid key or missing organization admin access."
-        );
-        onConnectionChange();
-
-        return;
-      }
-
       setApiKey("");
       setConnected(true);
       setMessage("Connected.");
       onConnectionChange();
     } catch (error) {
-      setConnected(false);
       setMessage(String(error));
     } finally {
       setSaving(false);
@@ -81,6 +65,7 @@ function OpenAIConnection({ onConnectionChange }: Props) {
 
   return (
     <section className="openai-connection">
+      <p className="section-description">{connected ? "An API key is saved securely on this device." : "Connect your organization to see API tokens and costs."} This is separate from your ChatGPT subscription.</p>
       <form
         className="openai-form"
         onSubmit={saveKey}
@@ -88,6 +73,8 @@ function OpenAIConnection({ onConnectionChange }: Props) {
         <input
           className="openai-key-input"
           type="password"
+          aria-label="OpenAI organization Admin API key"
+          autoComplete="off"
           value={apiKey}
           onChange={(event) =>
             setApiKey(event.target.value)
@@ -101,7 +88,7 @@ function OpenAIConnection({ onConnectionChange }: Props) {
           type="submit"
           disabled={saving}
         >
-          {connected ? "Update" : "Connect"}
+          {saving ? "Please wait…" : connected ? "Update key" : "Connect"}
         </button>
 
         {connected && (
@@ -111,7 +98,7 @@ function OpenAIConnection({ onConnectionChange }: Props) {
             onClick={disconnect}
             disabled={saving}
           >
-            Remove
+            Disconnect
           </button>
         )}
       </form>
@@ -119,6 +106,7 @@ function OpenAIConnection({ onConnectionChange }: Props) {
       {message && (
         <p
           className="openai-message"
+          role="status"
           data-tauri-drag-region
         >
           {message}

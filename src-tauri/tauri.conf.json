@@ -13,8 +13,9 @@
     "windows": [
       {
         "title": "TokenBar",
+        "visible": false,
         "width": 320,
-        "height": 310,
+        "height": 440,
         "resizable": false,
         "decorations": false,
         "transparent": true,

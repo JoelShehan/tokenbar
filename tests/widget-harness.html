@@ -1,0 +1,30 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>Widget regression harness</title></head>
+<body><div id="root"></div><script type="module">
+import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
+import { emit } from "@tauri-apps/api/event";
+const fixture = window.fixture = { mode: "connected", calls: [], startup: false, position: { x: 100, y: 100 } };
+window.emitTestEvent = emit;
+mockWindows("main");
+mockIPC(async (cmd, args) => {
+  fixture.calls.push({ cmd, args });
+  if (cmd === "plugin:window|set_size") { await window.resizeNative(args.value.toJSON().Logical); return; }
+  if (cmd === "plugin:window|outer_size") return { width: innerWidth, height: innerHeight };
+  if (cmd === "plugin:window|outer_position") return fixture.position;
+  if (cmd === "plugin:window|set_position") { fixture.position = args.value.toJSON().Physical; return; }
+  if (cmd === "plugin:window|current_monitor") return { name: "Test monitor", scaleFactor: 1, size: { width: 1920, height: 1080 }, position: { x: 0, y: 0 }, workArea: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1040 } } };
+  if (cmd === "plugin:autostart|is_enabled") return fixture.startup;
+  if (cmd === "plugin:autostart|enable") { fixture.startup = true; return; }
+  if (cmd === "plugin:autostart|disable") { fixture.startup = false; return; }
+  if (cmd === "is_codex_installed" || cmd === "has_openai_key") return fixture.mode !== "missing";
+  if (cmd === "get_codex_version") return "codex-cli test";
+  if (cmd === "plugin:app|version" || cmd === "plugin:app|tauri_version") return "0.1.0-test";
+  if (cmd === "get_codex_usage" || cmd === "get_openai_usage") {
+    if (fixture.mode === "auth") throw new Error("401 Unauthorized");
+    if (fixture.mode === "offline") throw new Error("Connection timed out");
+    if (fixture.mode === "slow") await new Promise(resolve => setTimeout(resolve, 300));
+    if (cmd === "get_openai_usage") return { total_tokens: 0, total_input_tokens: 0, total_output_tokens: 0, total_cost_usd: 0 };
+    return { limits: { rateLimits: { planType: "plus", primary: { usedPercent: 66, windowDurationMins: 300, resetsAt: 1789504685 }, secondary: { usedPercent: 51, windowDurationMins: 10080, resetsAt: 1789841164 } } }, activity: { summary: { lifetimeTokens: 879975146, peakDailyTokens: 64960764 } } };
+  }
+}, { shouldMockEvents: true });
+await import("/src/main.tsx");
+</script></body></html>
