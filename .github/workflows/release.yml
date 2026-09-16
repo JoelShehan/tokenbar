@@ -1,0 +1,57 @@
+name: Signed release candidates
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    # Provision this trusted runner with a hardware/cloud-backed signing identity
+    # accessible to SignTool. Never run pull-request code on this runner.
+    runs-on: [self-hosted, Windows, X64, tokenbar-signing]
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - name: Build and verify signed installer
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_THUMBPRINT: ${{ secrets.WINDOWS_CERTIFICATE_THUMBPRINT }}
+        run: ./scripts/release-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TokenBar-Windows-signed-candidate
+          path: src-tauri/target/release/bundle/nsis/*
+          if-no-files-found: error
+  macos:
+    runs-on: macos-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: rustup toolchain install stable --profile minimal
+      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - name: Build, sign and notarize universal app and DMG
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: bash scripts/release-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TokenBar-macOS-signed-candidate
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.zip
+          if-no-files-found: error

@@ -14,6 +14,10 @@ export type ProviderUsage = {
   id: string;
   name: string;
   connected: boolean;
+  state?: "connected" | "no-usage" | "unavailable" | "auth-error";
+  message?: string;
+  updatedAt?: string;
+  stale?: boolean;
   metrics: UsageMetric[];
   stats: UsageStat[];
 };
