@@ -43,6 +43,7 @@ function ProviderCard({ provider }: Props) {
         className="provider-content"
         data-tauri-drag-region
       >
+        {provider.stale && <p className="stale-notice" role="status">Stale · showing last successful update</p>}
         {provider.message && <p className="provider-message">{provider.message}</p>}
         {provider.metrics.map((metric) => (
           <UsageMetric

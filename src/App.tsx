@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow, LogicalSize, PhysicalPosition, currentMonitor } from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalSize, PhysicalPosition, currentMonitor, primaryMonitor } from "@tauri-apps/api/window";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { saveWindowState, StateFlags } from "@tauri-apps/plugin-window-state";
 import { listen } from "@tauri-apps/api/event";
@@ -13,6 +13,7 @@ import Preferences from "./components/Preferences";
 import OpenAIConnection from "./components/OpenAIConnection";
 import ProviderCard from "./components/ProviderCard";
 import About from "./components/About";
+import { safeError } from "./services/responseValidation";
 import "./App.css";
 
 const appWindow = getCurrentWindow();
@@ -27,42 +28,70 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastAttempt, setLastAttempt] = useState<Date | null>(null);
   const [notice, setNotice] = useState("");
+  const [online, setOnline] = useState(navigator.onLine);
+  const [displayRevision, setDisplayRevision] = useState(0);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
-  const requestId = useRef(0);
-  const refreshQueue = useRef<Promise<void>>(Promise.resolve());
+  const activeRefresh = useRef<Promise<void> | null>(null);
   const resizeQueue = useRef<Promise<void>>(Promise.resolve());
   const startupDone = useRef(false);
   const initialHidden = useRef(settings.startHidden);
 
-  const refresh = useCallback(() => {
-    const id = ++requestId.current;
-    refreshQueue.current = refreshQueue.current.catch(() => {}).then(async () => {
-      if (id !== requestId.current) return;
+  const refresh = useCallback((force = true) => {
+    if (activeRefresh.current) return activeRefresh.current;
+    const request = (async () => {
       setRefreshing(true);
       const current = settingsRef.current;
       const enabled = [...(current.showCodex ? ["codex"] : []), ...(current.showOpenAI ? ["openai-api"] : [])];
       try {
-        const result = await providerManager.getAvailableUsage(enabled);
-        if (id !== requestId.current) return;
-        setProviders(result.providers);
-        setErrors(result.errors);
+        await providerManager.getAvailableUsage(enabled, force, current.refreshInterval, navigator.onLine, (usage, error) => {
+          const config = settingsRef.current;
+          if (!(usage.id === "codex" ? config.showCodex : config.showOpenAI)) return;
+          setProviders(previous => [...previous.filter(p => p.id !== usage.id), usage].sort((a, b) => a.id.localeCompare(b.id)));
+          setErrors(previous => [...previous.filter(e => e.providerId !== usage.id), ...(error ? [error] : [])]);
+        });
         setLastAttempt(new Date());
       } catch {
         setNotice("Refresh failed. Please try again.");
       } finally {
-        if (id === requestId.current) setRefreshing(false);
+        setRefreshing(false);
       }
-    });
-    return refreshQueue.current;
+    })();
+    activeRefresh.current = request;
+    void request.finally(() => { activeRefresh.current = null; });
+    return request;
   }, []);
 
   useEffect(() => {
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), settings.refreshInterval);
-    return () => window.clearInterval(timer);
+    let stopped = false;
+    let timer = 0;
+    let cycleId = 0;
+    const cycle = async (force = false) => {
+      const ticket = ++cycleId;
+      window.clearTimeout(timer);
+      await refresh(force);
+      if (stopped || ticket !== cycleId) return;
+      const ids = [...(settings.showCodex ? ["codex"] : []), ...(settings.showOpenAI ? ["openai-api"] : [])];
+      const delay = navigator.onLine ? providerManager.nextDelay(ids, settings.refreshInterval) : settings.refreshInterval;
+      timer = window.setTimeout(() => void cycle(), delay);
+    };
+    const reconnect = () => { setOnline(true); void cycle(true); };
+    const disconnect = () => { setOnline(false); void cycle(); };
+    const wake = () => { setDisplayRevision(v => v + 1); void cycle(); };
+    const visible = () => { if (document.visibilityState === "visible") wake(); };
+    window.addEventListener("online", reconnect);
+    window.addEventListener("offline", disconnect);
+    window.addEventListener("focus", wake);
+    document.addEventListener("visibilitychange", visible);
+    // Deferring the initial cycle lets React StrictMode cancel its test mount.
+    timer = window.setTimeout(() => void cycle(), 0);
+    return () => {
+      stopped = true; window.clearTimeout(timer);
+      window.removeEventListener("online", reconnect); window.removeEventListener("offline", disconnect);
+      window.removeEventListener("focus", wake); document.removeEventListener("visibilitychange", visible);
+    };
   }, [refresh, settings.refreshInterval, settings.showCodex, settings.showOpenAI]);
 
   useEffect(() => {
@@ -72,9 +101,12 @@ export default function App() {
       appWindow.onMoved(() => {
         window.clearTimeout(timer);
         timer = window.setTimeout(() => {
+          setDisplayRevision(v => v + 1);
           void saveWindowState(StateFlags.POSITION).catch(() => setNotice("Window position could not be saved."));
         }, 350);
       }),
+      appWindow.onScaleChanged(() => setDisplayRevision(v => v + 1)),
+      listen("tauri://resumed", () => { setDisplayRevision(v => v + 1); void refresh(false); }),
       listen<string>("navigate", event => {
         setCollapsed(false);
         setScreen(event.payload === "about" ? "about" : "settings");
@@ -111,10 +143,18 @@ export default function App() {
       saveSettings(next);
       setSettings(next);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Preference could not be saved. Please try again.");
+      setNotice(safeError(error));
     } finally {
       setSettingsBusy(false);
     }
+  };
+
+  const connectionChanged = async () => {
+    // Do not let an old account's in-flight response repopulate a cleared cache.
+    await activeRefresh.current;
+    providerManager.invalidate("openai-api");
+    setProviders(previous => previous.filter(provider => provider.id !== "openai-api"));
+    await refresh(true);
   };
 
   useEffect(() => {
@@ -122,7 +162,7 @@ export default function App() {
     resizeQueue.current = resizeQueue.current.catch(() => {}).then(async () => {
       if (cancelled) return;
       let height = collapsed ? 56 : screen !== "usage" ? 580 : 180;
-      const width = collapsed ? 240 : 320;
+      let width = collapsed ? 240 : 320;
       if (!collapsed && screen === "usage" && contentRef.current) {
         const measurement = contentRef.current.parentElement!.cloneNode(false) as HTMLElement;
         measurement.setAttribute("aria-hidden", "true");
@@ -136,9 +176,10 @@ export default function App() {
         try { height = Math.max(180, Math.ceil(measurement.getBoundingClientRect().height)); }
         finally { measurement.remove(); }
       }
-      const monitor = await currentMonitor();
+      const monitor = await currentMonitor() ?? await primaryMonitor();
       const scale = monitor?.scaleFactor ?? 1;
       height = Math.min(height, 700, monitor ? monitor.workArea.size.height / scale : 700);
+      width = Math.min(width, monitor ? monitor.workArea.size.width / scale : width);
       if (cancelled) return;
       await appWindow.setSize(new LogicalSize(width, height));
       if (monitor) {
@@ -158,11 +199,12 @@ export default function App() {
       if (!initialHidden.current) void appWindow.show();
     });
     return () => { cancelled = true; };
-  }, [collapsed, screen, providers, refreshing, lastAttempt, notice, settings.compactMode, settings.showCodex, settings.showOpenAI]);
+  }, [collapsed, screen, providers, refreshing, lastAttempt, notice, displayRevision, online, settings.compactMode, settings.showCodex, settings.showOpenAI]);
 
   const visible = providers.filter(provider => provider.id === "codex" ? settings.showCodex : settings.showOpenAI);
-  const primary = visible.find(provider => provider.connected && provider.state !== "unavailable");
-  const summary = primary?.metrics[0]?.displayValue ?? primary?.stats[0]?.value ?? (refreshing ? "Refreshing…" : "Unavailable");
+  const primary = visible.find(provider => provider.connected && provider.state !== "unavailable") ?? visible.find(provider => provider.stale);
+  const summaryValue = primary?.metrics[0]?.displayValue ?? primary?.stats[0]?.value ?? (refreshing ? "Refreshing…" : "Unavailable");
+  const summary = primary?.stale || !online ? `${summaryValue} · stale` : summaryValue;
   const updatedTimes = visible.flatMap(provider => provider.updatedAt ? [provider.updatedAt] : []).sort();
   const updated = updatedTimes[updatedTimes.length - 1];
   const hide = () => void appWindow.hide().catch(() => setNotice("Could not hide the widget."));
@@ -186,13 +228,14 @@ export default function App() {
         </div>
       </header>
       {screen === "usage" ? <>
+        {!online && <div className="stale-notice" role="status">Offline · refresh will resume when connected</div>}
         <div className="providers-list">
           {!settings.showCodex && !settings.showOpenAI ? <div className="empty-state"><strong>Choose your providers</strong><p>Enable Codex or OpenAI API to start tracking usage.</p><button className="text-button" onClick={() => navigate("settings")}>Open settings</button></div>
             : !visible.length ? <div className="empty-state" role="status">Reading your usage…</div>
             : visible.map(provider => <ProviderCard key={provider.id} provider={provider} />)}
         </div>
         <footer className="widget-footer" aria-live="polite">
-          <span>{refreshing ? "Refreshing…" : updated ? `Updated ${new Date(updated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "No successful update"}</span>
+          <span>{refreshing ? "Refreshing…" : updated ? `${visible.some(p => p.stale) ? "Last success" : "Updated"} ${new Date(updated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "No successful update"}</span>
           {errors.length > 0 && <button className="text-button" onClick={() => navigate("about")}>Details</button>}
         </footer>
       </> : <div className="settings-panel">
@@ -200,7 +243,7 @@ export default function App() {
         {screen === "settings" ? <>
           <h1>Make it yours</h1><p className="section-description">Preferences save automatically.</p>
           <fieldset disabled={settingsBusy}><Preferences settings={settings} onChange={next => void changeSettings(next)} /></fieldset>
-          <h2>API connection</h2><OpenAIConnection onConnectionChange={() => void refresh()} />
+          <h2>API connection</h2><OpenAIConnection onConnectionChange={() => void connectionChanged()} />
           <h2>Window</h2><p className="section-description">Drag the header to move TokenBar. Your position is remembered. Closing the window keeps it in the tray.</p>
           <div className="action-row"><button onClick={hide}>Hide to tray</button><button onClick={() => void invoke("quit_app").catch(() => setNotice("Could not quit. Try the tray menu."))}>Quit TokenBar</button></div>
         </> : <About providers={visible} errors={errors} lastAttempt={lastAttempt} settings={settings} />}

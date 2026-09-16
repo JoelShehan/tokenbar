@@ -1,14 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { UsageProvider } from "./UsageProvider";
 import type { ProviderUsage } from "../types/usage";
-
-type WindowUsage = { usedPercent: number; windowDurationMins: number | null; resetsAt: number | null };
-type Limits = { primary?: WindowUsage | null; secondary?: WindowUsage | null; planType?: string | null };
-type CodexUsage = {
-  limits: { rateLimits: Limits; rateLimitsByLimitId?: Record<string, Limits> | null };
-  activity: { summary?: { lifetimeTokens?: number | null; peakDailyTokens?: number | null } } | null;
-  activityError?: string | null;
-};
+import { validateCodexUsage } from "../services/responseValidation";
 
 function windowLabel(minutes: number | null, fallback: string) {
   if (!minutes) return fallback;
@@ -25,8 +18,8 @@ export class CodexProvider implements UsageProvider {
   }
 
   async getUsage(): Promise<ProviderUsage> {
-    const usage = await invoke<CodexUsage>("get_codex_usage");
-    const limits = usage.limits.rateLimitsByLimitId?.codex ?? usage.limits.rateLimits;
+    const usage = validateCodexUsage(await invoke<unknown>("get_codex_usage"));
+    const limits = usage.limits.rateLimits;
     const metrics = [limits?.primary, limits?.secondary].flatMap((window, index) =>
       window && Number.isFinite(window.usedPercent) ? [{
         label: windowLabel(window.windowDurationMins, index === 0 ? "Primary usage" : "Secondary usage"),

@@ -24,10 +24,6 @@ export function loadSettings(): TokenBarSettings {
     if (typeof stored.opacity === "number" && Number.isFinite(stored.opacity)) settings.opacity = Math.min(1, Math.max(0.6, stored.opacity));
     return settings;
   } catch (error) {
-    console.error(
-      "Failed to load TokenBar settings",
-      error
-    );
 
     return defaultSettings;
   }
@@ -42,10 +38,6 @@ export function saveSettings(
       JSON.stringify(settings)
     );
   } catch (error) {
-    console.error(
-      "Failed to save TokenBar settings",
-      error
-    );
     throw new Error("Preferences could not be saved on this device.");
   }
 }

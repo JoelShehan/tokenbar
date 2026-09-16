@@ -2,23 +2,32 @@
 <body><div id="root"></div><script type="module">
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
-const fixture = window.fixture = { mode: "connected", calls: [], startup: false, position: { x: 100, y: 100 } };
+const fixture = window.fixture = { mode: "connected", codexMode: null, apiMode: null, calls: [], startup: false, scale: 1, missingMonitor: false, position: { x: 100, y: 100 }, area: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1040 } } };
 window.emitTestEvent = emit;
 mockWindows("main");
 mockIPC(async (cmd, args) => {
   fixture.calls.push({ cmd, args });
   if (cmd === "plugin:window|set_size") { await window.resizeNative(args.value.toJSON().Logical); return; }
-  if (cmd === "plugin:window|outer_size") return { width: innerWidth, height: innerHeight };
+  if (cmd === "plugin:window|outer_size") return { width: innerWidth * fixture.scale, height: innerHeight * fixture.scale };
   if (cmd === "plugin:window|outer_position") return fixture.position;
   if (cmd === "plugin:window|set_position") { fixture.position = args.value.toJSON().Physical; return; }
-  if (cmd === "plugin:window|current_monitor") return { name: "Test monitor", scaleFactor: 1, size: { width: 1920, height: 1080 }, position: { x: 0, y: 0 }, workArea: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1040 } } };
+  if (cmd === "plugin:window|current_monitor" && fixture.missingMonitor) return null;
+  if (cmd === "plugin:window|current_monitor" || cmd === "plugin:window|primary_monitor") return { name: "Test monitor", scaleFactor: fixture.scale, size: fixture.area.size, position: fixture.area.position, workArea: fixture.area };
   if (cmd === "plugin:autostart|is_enabled") return fixture.startup;
   if (cmd === "plugin:autostart|enable") { fixture.startup = true; return; }
   if (cmd === "plugin:autostart|disable") { fixture.startup = false; return; }
-  if (cmd === "is_codex_installed" || cmd === "has_openai_key") return fixture.mode !== "missing";
+  if (cmd === "is_codex_installed") return (fixture.codexMode ?? fixture.mode) !== "missing";
+  if (cmd === "has_openai_key") return (fixture.apiMode ?? fixture.mode) !== "missing";
   if (cmd === "get_codex_version") return "codex-cli test";
   if (cmd === "plugin:app|version" || cmd === "plugin:app|tauri_version") return "0.1.0-test";
   if (cmd === "get_codex_usage" || cmd === "get_openai_usage") {
+    const mode = (cmd === "get_codex_usage" ? fixture.codexMode : fixture.apiMode) ?? fixture.mode;
+    if (mode === "expired") throw new Error("403 expired token");
+    if (mode === "offline") throw new Error("Connection timed out");
+    if (mode === "auth") throw new Error("401 Unauthorized");
+    if (mode === "slow") await new Promise(resolve => setTimeout(resolve, 300));
+    if (fixture.mode === "malformed") return { limits: { rateLimits: { primary: { usedPercent: "not-a-number" } } }, total_tokens: -1 };
+    if (fixture.mode === "secret-error") throw new Error("Authorization: Bearer TEST_SECRET_SENTINEL sk-test-only-sentinel");
     if (fixture.mode === "auth") throw new Error("401 Unauthorized");
     if (fixture.mode === "offline") throw new Error("Connection timed out");
     if (fixture.mode === "slow") await new Promise(resolve => setTimeout(resolve, 300));

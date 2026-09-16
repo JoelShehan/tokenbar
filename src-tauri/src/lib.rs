@@ -1,5 +1,7 @@
 use std::process::Command;
+mod codex_response;
 mod codex_usage;
+mod security;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -8,12 +10,20 @@ use serde::{Deserialize, Serialize};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, Emitter,
+    Emitter, Manager,
 };
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
 const TOKENBAR_SERVICE: &str = "tokenbar";
 const OPENAI_ACCOUNT: &str = "openai-admin-key";
+
+fn ensure_native_key_store() -> Result<(), String> {
+    if cfg!(any(target_os = "windows", target_os = "macos")) {
+        Ok(())
+    } else {
+        Err("API credentials require Windows Credential Manager or macOS Keychain".into())
+    }
+}
 
 #[derive(Debug, Serialize)]
 struct OpenAiUsageSummary {
@@ -26,7 +36,6 @@ struct OpenAiUsageSummary {
 #[derive(Debug, Deserialize)]
 struct UsageResponse {
     data: Vec<UsageBucket>,
-    #[serde(default)]
     has_more: bool,
     next_page: Option<String>,
 }
@@ -38,17 +47,14 @@ struct UsageBucket {
 
 #[derive(Debug, Deserialize)]
 struct UsageResult {
-    #[serde(default)]
     input_tokens: i64,
 
-    #[serde(default)]
     output_tokens: i64,
 }
 
 #[derive(Debug, Deserialize)]
 struct CostResponse {
     data: Vec<CostBucket>,
-    #[serde(default)]
     has_more: bool,
     next_page: Option<String>,
 }
@@ -70,12 +76,20 @@ struct CostAmount {
 }
 
 #[tauri::command]
-fn is_codex_installed() -> bool {
-    get_codex_version().is_some()
+async fn is_codex_installed() -> bool {
+    get_codex_version().await.is_some()
 }
 
 #[tauri::command]
-fn get_codex_version() -> Option<String> {
+async fn get_codex_version() -> Option<String> {
+    tauri::async_runtime::spawn_blocking(read_codex_version)
+        .await
+        .ok()
+        .flatten()
+}
+
+fn read_codex_version() -> Option<String> {
+    use std::io::Read;
     let executable = if cfg!(target_os = "windows") {
         "codex.exe"
     } else {
@@ -83,56 +97,39 @@ fn get_codex_version() -> Option<String> {
     };
 
     let mut command = Command::new(executable);
-    command.arg("--version");
+    command
+        .arg("--version")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
 
     // Keep the background CLI check from flashing a console window.
     #[cfg(target_os = "windows")]
     command.creation_flags(0x08000000); // CREATE_NO_WINDOW
 
-    let output = command.output().ok()?;
-    if !output.status.success() {
+    let mut child = command.spawn().ok()?;
+    let stdout = child.stdout.take()?;
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let result = stdout.take(4096).read_to_end(&mut bytes).map(|_| bytes);
+        let _ = sender.send(result);
+    });
+    let result = receiver.recv_timeout(std::time::Duration::from_secs(3));
+    let _ = child.kill();
+    let _ = child.wait();
+    let bytes = result.ok()?.ok()?;
+    let raw = String::from_utf8_lossy(&bytes);
+    let version = raw.trim().strip_prefix("codex-cli ")?;
+    if version.len() > 24 || !version.chars().all(|c| c.is_ascii_digit() || c == '.') {
         return None;
     }
-
-    Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-#[tauri::command]
-fn get_codex_login_status() -> String {
-    let executable = if cfg!(target_os = "windows") {
-        "codex.exe"
-    } else {
-        "codex"
-    };
-
-    let mut command = Command::new(executable);
-    command.args(["login", "status"]);
-
-    #[cfg(target_os = "windows")]
-    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-
-    match command.output() {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-
-            if !stdout.is_empty() {
-                stdout
-            } else if !stderr.is_empty() {
-                stderr
-            } else if output.status.success() {
-                "Logged in".to_string()
-            } else {
-                "Unavailable".to_string()
-            }
-        }
-        Err(_) => "Unavailable".to_string(),
-    }
+    Some(format!("codex-cli {version}"))
 }
 
 fn get_openai_key_from_keychain() -> Result<String, String> {
-    let entry =
-        keyring::Entry::new(TOKENBAR_SERVICE, OPENAI_ACCOUNT).map_err(|error| error.to_string())?;
+    ensure_native_key_store()?;
+    let entry = keyring::Entry::new(TOKENBAR_SERVICE, OPENAI_ACCOUNT)
+        .map_err(|_| "Secure credential store unavailable")?;
 
     entry
         .get_password()
@@ -141,15 +138,22 @@ fn get_openai_key_from_keychain() -> Result<String, String> {
 
 #[tauri::command]
 async fn save_openai_key(api_key: String) -> Result<(), String> {
-    if !validate_openai_key(Some(api_key.clone())).await? {
-        return Err("Authentication failed: invalid key or missing organization admin access".into());
+    ensure_native_key_store()?;
+    if api_key.len() > 1024 || api_key.trim().is_empty() || api_key.chars().any(char::is_whitespace)
+    {
+        return Err("Invalid API key format".into());
     }
-    let entry =
-        keyring::Entry::new(TOKENBAR_SERVICE, OPENAI_ACCOUNT).map_err(|error| error.to_string())?;
+    if !validate_openai_key(Some(api_key.clone())).await? {
+        return Err(
+            "Authentication failed: invalid key or missing organization admin access".into(),
+        );
+    }
+    let entry = keyring::Entry::new(TOKENBAR_SERVICE, OPENAI_ACCOUNT)
+        .map_err(|_| "Secure credential store unavailable")?;
 
     entry
         .set_password(&api_key)
-        .map_err(|error| error.to_string())
+        .map_err(|_| "Could not save key in secure credential store".into())
 }
 
 #[tauri::command]
@@ -159,40 +163,56 @@ fn has_openai_key() -> bool {
 
 #[tauri::command]
 fn delete_openai_key() -> Result<(), String> {
-    let entry =
-        keyring::Entry::new(TOKENBAR_SERVICE, OPENAI_ACCOUNT).map_err(|error| error.to_string())?;
+    ensure_native_key_store()?;
+    let entry = keyring::Entry::new(TOKENBAR_SERVICE, OPENAI_ACCOUNT)
+        .map_err(|_| "Secure credential store unavailable")?;
 
-    entry.delete_credential().map_err(|error| error.to_string())
+    entry
+        .delete_credential()
+        .map_err(|_| "Could not remove key from secure credential store".into())
 }
 
 #[tauri::command]
 async fn validate_openai_key(api_key: Option<String>) -> Result<bool, String> {
-    let api_key = match api_key { Some(key) => key, None => get_openai_key_from_keychain()? };
+    let api_key = match api_key {
+        Some(key) => key,
+        None => get_openai_key_from_keychain()?,
+    };
 
-    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(20)).build().map_err(|e| e.to_string())?;
+    let client = security::client()?;
 
     let response = client
         .get("https://api.openai.com/v1/organization/projects")
         .bearer_auth(api_key)
         .send()
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|_| "OpenAI connection failed")?;
 
-    if response.status().as_u16() == 401 || response.status().as_u16() == 403 { return Ok(false); }
-    if !response.status().is_success() { return Err(format!("Could not validate API key: {}", response.status())); }
+    if response.status().as_u16() == 401 || response.status().as_u16() == 403 {
+        return Ok(false);
+    }
+    if !response.status().is_success() {
+        return Err(format!("Could not validate API key: {}", response.status()));
+    }
     Ok(true)
 }
 
 #[tauri::command]
 async fn get_openai_usage() -> Result<OpenAiUsageSummary, String> {
+    tokio::time::timeout(std::time::Duration::from_secs(45), read_openai_usage())
+        .await
+        .map_err(|_| "OpenAI usage request timed out".to_string())?
+}
+
+async fn read_openai_usage() -> Result<OpenAiUsageSummary, String> {
     let api_key = get_openai_key_from_keychain()?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|error| error.to_string())?
+        .map_err(|_| "System clock is unavailable")?
         .as_secs();
 
-    let start_time = now - (30 * 24 * 60 * 60);
+    let start_time = now.saturating_sub(30 * 24 * 60 * 60);
 
     let usage_url = format!(
         "https://api.openai.com/v1/organization/usage/completions\
@@ -200,13 +220,11 @@ async fn get_openai_usage() -> Result<OpenAiUsageSummary, String> {
         start_time, now
     );
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .map_err(|error| error.to_string())?;
+    let client = security::client()?;
     let mut input_tokens = 0;
     let mut output_tokens = 0;
     let mut page: Option<String> = None;
+    let mut seen = std::collections::HashSet::new();
     loop {
         let mut request = client.get(&usage_url).bearer_auth(&api_key);
         if let Some(cursor) = &page {
@@ -215,7 +233,7 @@ async fn get_openai_usage() -> Result<OpenAiUsageSummary, String> {
         let response = request
             .send()
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|_| "OpenAI connection failed")?;
 
         if !response.status().is_success() {
             return Err(format!(
@@ -224,24 +242,18 @@ async fn get_openai_usage() -> Result<OpenAiUsageSummary, String> {
             ));
         }
 
-        let usage: UsageResponse = response.json().await.map_err(|error| error.to_string())?;
+        let usage: UsageResponse = security::json(response).await?;
 
         for bucket in usage.data {
             for result in bucket.results {
-                input_tokens += result.input_tokens;
-                output_tokens += result.output_tokens;
+                input_tokens = security::add_tokens(input_tokens, result.input_tokens)?;
+                output_tokens = security::add_tokens(output_tokens, result.output_tokens)?;
             }
         }
-        if !usage.has_more {
+        page = security::next_page(usage.has_more, usage.next_page, &mut seen)?;
+        if page.is_none() {
             break;
         }
-        let next = usage
-            .next_page
-            .ok_or("OpenAI usage response missing next page")?;
-        if page.as_ref() == Some(&next) {
-            return Err("OpenAI usage pagination did not advance".into());
-        }
-        page = Some(next);
     }
 
     let costs_url = format!(
@@ -252,6 +264,7 @@ async fn get_openai_usage() -> Result<OpenAiUsageSummary, String> {
 
     let mut total_cost = 0.0;
     page = None;
+    seen.clear();
     loop {
         let mut request = client.get(&costs_url).bearer_auth(&api_key);
         if let Some(cursor) = &page {
@@ -260,7 +273,7 @@ async fn get_openai_usage() -> Result<OpenAiUsageSummary, String> {
         let costs_response = request
             .send()
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|_| "OpenAI connection failed")?;
 
         if !costs_response.status().is_success() {
             return Err(format!(
@@ -268,34 +281,32 @@ async fn get_openai_usage() -> Result<OpenAiUsageSummary, String> {
                 costs_response.status()
             ));
         }
-        let costs: CostResponse = costs_response
-            .json()
-            .await
-            .map_err(|error| error.to_string())?;
+        let costs: CostResponse = security::json(costs_response).await?;
 
         for bucket in costs.data {
             for result in bucket.results {
-                if result.amount.currency == "usd" {
-                    total_cost += result.amount.value;
+                if result.amount.currency != "usd"
+                    || !result.amount.value.is_finite()
+                    || result.amount.value < 0.0
+                {
+                    return Err("Invalid API cost response".into());
+                }
+                total_cost += result.amount.value;
+                if !total_cost.is_finite() || total_cost > security::MAX_SAFE_INTEGER as f64 {
+                    return Err("Invalid API cost total".into());
                 }
             }
         }
-        if !costs.has_more {
+        page = security::next_page(costs.has_more, costs.next_page, &mut seen)?;
+        if page.is_none() {
             break;
         }
-        let next = costs
-            .next_page
-            .ok_or("OpenAI costs response missing next page")?;
-        if page.as_ref() == Some(&next) {
-            return Err("OpenAI costs pagination did not advance".into());
-        }
-        page = Some(next);
     }
 
     Ok(OpenAiUsageSummary {
         total_input_tokens: input_tokens,
         total_output_tokens: output_tokens,
-        total_tokens: input_tokens + output_tokens,
+        total_tokens: security::add_tokens(input_tokens, output_tokens)?,
         total_cost_usd: total_cost,
     })
 }
@@ -303,7 +314,7 @@ async fn get_openai_usage() -> Result<OpenAiUsageSummary, String> {
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) -> Result<(), String> {
     // A persistence failure must never prevent an explicit quit.
-    if let Err(error) = app.save_window_state(StateFlags::POSITION) { eprintln!("Could not save window position: {error}"); }
+    let _ = app.save_window_state(StateFlags::POSITION);
     app.exit(0);
     Ok(())
 }
@@ -316,14 +327,17 @@ mod usage_tests {
         let result = tauri::async_runtime::block_on(super::get_openai_usage());
         let usage = result.expect("organization usage request");
         assert!(usage.total_tokens >= 0);
-        println!("API tokens: {}; cost: {}", usage.total_tokens, usage.total_cost_usd);
     }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_window_state::Builder::new().with_state_flags(StateFlags::POSITION).build())
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(StateFlags::POSITION)
+                .build(),
+        )
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -331,10 +345,20 @@ pub fn run() {
 
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
-            let refresh_item = MenuItem::with_id(app, "refresh", "Refresh usage", true, None::<&str>)?;
+            let refresh_item =
+                MenuItem::with_id(app, "refresh", "Refresh usage", true, None::<&str>)?;
             let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let about_item = MenuItem::with_id(app, "about", "About TokenBar", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &refresh_item, &settings_item, &about_item, &quit_item])?;
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &show_item,
+                    &refresh_item,
+                    &settings_item,
+                    &about_item,
+                    &quit_item,
+                ],
+            )?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().expect("bundled app icon").clone())
@@ -349,7 +373,9 @@ pub fn run() {
                         }
                     }
 
-                    "refresh" => { let _ = app.emit("refresh-usage", ()); }
+                    "refresh" => {
+                        let _ = app.emit("refresh-usage", ());
+                    }
                     "settings" | "about" => {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
@@ -357,7 +383,9 @@ pub fn run() {
                         }
                         let _ = app.emit("navigate", event.id.as_ref());
                     }
-                    "quit" => { let _ = quit_app(app.clone()); }
+                    "quit" => {
+                        let _ = quit_app(app.clone());
+                    }
 
                     _ => {}
                 })
@@ -401,7 +429,6 @@ pub fn run() {
             quit_app,
             is_codex_installed,
             get_codex_version,
-            get_codex_login_status,
             codex_usage::get_codex_usage,
             save_openai_key,
             has_openai_key,

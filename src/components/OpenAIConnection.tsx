@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { safeError } from "../services/responseValidation";
 
 type Props = {
   onConnectionChange: () => void;
@@ -42,8 +43,9 @@ function OpenAIConnection({ onConnectionChange }: Props) {
       setMessage("Connected.");
       onConnectionChange();
     } catch (error) {
-      setMessage(String(error));
+      setMessage(safeError(error));
     } finally {
+      setApiKey("");
       setSaving(false);
     }
   };
@@ -57,7 +59,7 @@ function OpenAIConnection({ onConnectionChange }: Props) {
       setConnected(false);
       onConnectionChange();
     } catch (error) {
-      setMessage(String(error));
+      setMessage(safeError(error));
     } finally {
       setSaving(false);
     }

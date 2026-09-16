@@ -18,9 +18,17 @@ test("expansion restores natural height without opening settings", async ({ page
     await page.getByRole("button", { name: "Expand widget" }).click();
     await expect.poll(() => page.viewportSize()!.height).toBe(height);
     await expect(page.getByText("Lifetime tokens")).toBeVisible();
+    const geometry = await page.evaluate(() => {
+      const main = document.querySelector("main")!.getBoundingClientRect();
+      const provider = document.querySelector(".provider-card")!.getBoundingClientRect();
+      return { height: main.height, viewport: innerHeight, providerBottom: provider.bottom };
+    });
+    expect(geometry.height).toBe(geometry.viewport);
+    expect(geometry.providerBottom).toBeLessThan(geometry.viewport);
   }
   await page.screenshot({ path: "test-results/widget-expanded.png" });
   await page.getByRole("button", { name: "Open settings" }).click();
+  await page.screenshot({ path: "test-results/widget-settings.png" });
   await page.getByRole("checkbox", { name: "Dense layout" }).check();
   await page.getByRole("button", { name: "Back to usage" }).click();
   await expect.poll(() => page.viewportSize()!.height).toBeLessThan(height);
@@ -32,8 +40,8 @@ test("provider errors never display stale quotas as current", async ({ page }) =
   await page.evaluate(() => { (window as any).fixture.mode = "auth"; });
   await page.getByRole("button", { name: "Refresh usage" }).click();
   await expect(page.getByText("Sign-in required")).toHaveCount(2);
-  await expect(page.getByText("34% left")).toHaveCount(0);
-  await expect(page.getByText("No successful update")).toBeVisible();
+  await expect(page.getByText("34% left")).toBeVisible();
+  await expect(page.getByText("Stale · showing last successful update")).toHaveCount(2);
   await page.evaluate(() => { (window as any).fixture.mode = "offline"; });
   await page.getByRole("button", { name: "Refresh usage" }).click();
   await expect(page.getByText("Unavailable", { exact: true })).toHaveCount(2);

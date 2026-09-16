@@ -2,12 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { UsageProvider } from "./UsageProvider";
 import type { ProviderUsage } from "../types/usage";
 
-type OpenAiUsageSummary = {
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_tokens: number;
-  total_cost_usd: number;
-};
+import { validateApiUsage } from "../services/responseValidation";
 
 export class OpenAIApiProvider implements UsageProvider {
   id = "openai-api";
@@ -18,9 +13,9 @@ export class OpenAIApiProvider implements UsageProvider {
   }
 
   async getUsage(): Promise<ProviderUsage> {
-    const usage = await invoke<OpenAiUsageSummary>(
+    const usage = validateApiUsage(await invoke<unknown>(
       "get_openai_usage"
-    );
+    ));
     const hasUsage =
       usage.total_tokens > 0 ||
       usage.total_cost_usd > 0;
