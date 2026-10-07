@@ -2,7 +2,7 @@
 
 ## Current release status
 
-0.1.0 is a release candidate, **not production-ready**. Product name is TokenBar;
+0.1.1 is a Windows x64 test candidate, **not production-ready**. Product name is TokenBar;
 publisher is Yowel Shehan Alahakoon; bundle identifier remains `com.tokenbar.app` to preserve
 existing app storage identity. Tauri warns about the `.app` suffix; changing it now
 requires a tested preferences/window-state migration. Do not change it for a patch upgrade.
@@ -32,7 +32,7 @@ The signed path fails if either executable lacks a valid timestamped signature.
 Use a trusted publisher certificate or signing service; a self-signed certificate
 does not establish trust on customers' machines. Service-specific signing may
 require replacing the certificate configuration with Tauri's `signCommand`.
-Output: `src-tauri/target/release/bundle/nsis/TokenBar_0.1.0_x64-setup.exe`
+Output: `src-tauri/target/release/bundle/nsis/TokenBar_0.1.1_x64-setup.exe`
 and adjacent SHA-256 checksum. The NSIS installer is per-user and prevents downgrades.
 
 If development cannot replace `target/debug/tokenbar.exe`, choose **Quit** from
@@ -89,3 +89,7 @@ Use disposable test accounts/VMs for lifecycle tests and synthetic credentials.
 
 Do not claim production readiness until signed artifacts pass this matrix.
 Signing improves trust but does not guarantee that every reputation warning disappears.
+
+## Windows 0.1.1 bundled connection
+
+Run scripts/prepare-codex.ps1 before a direct build (release-windows.ps1 runs it automatically). This pins the official Windows x64 Codex 0.161.0 executable and verifies SHA-256. LICENSE and NOTICE ship beside the helper. This release is Windows x64 only; the existing macOS procedure needs a platform-specific helper before it can be used. Users connect inside TokenBar; no system CLI is required. See SHARE-WITH-FRIENDS.md. Real browser sign-in and second-machine installation remain unverified until recorded.

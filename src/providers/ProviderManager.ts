@@ -56,7 +56,7 @@ export class ProviderManager {
           try {
             if (!await provider.isAvailable()) {
               return { usage: { id: provider.id, name: provider.name, connected: false, state: "unavailable", metrics: [], stats: [],
-                message: provider.id === "codex" ? "Install Codex and sign in to see your subscription usage." : "Connect an organization Admin API key in Settings to see API usage."
+                message: provider.id === "codex" ? "The included Codex connection is unavailable. Reinstall TokenBar if this continues." : "Connect an organization Admin API key in Settings to see API usage."
               }, failures: 0, next: this.now() + interval };
             }
             const usage = { ...await provider.getUsage(), stale: false, updatedAt: new Date(this.now()).toISOString() };
@@ -64,7 +64,7 @@ export class ProviderManager {
           } catch (error) {
             const message = safeError(error);
             const state = classifyProviderError(message);
-            return failed(state === "auth-error" ? "Authentication required. Reconnect your account, then refresh." : message, state, (previous?.failures ?? 0) + 1);
+            return failed(state === "auth-error" ? provider.id === "codex" ? "Connect Codex to see your subscription usage." : "Authentication required. Reconnect your account, then refresh." : message, state, (previous?.failures ?? 0) + 1);
           }
         })();
         this.pending.set(provider.id, request);

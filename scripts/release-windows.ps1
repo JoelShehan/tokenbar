@@ -1,6 +1,7 @@
 param([switch]$Unsigned)
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
+& "$PSScriptRoot/prepare-codex.ps1"
 $config = Join-Path $env:TEMP ('tokenbar-signing-' + [guid]::NewGuid() + '.json')
 try {
     $arguments = @('run', 'tauri', 'build', '--', '--bundles', 'nsis')

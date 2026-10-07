@@ -20,7 +20,7 @@ export const defaultSettings: TokenBarSettings = {
   opacity: 0.96,
   compactMode: false,
   showCodex: true,
-  showOpenAI: true,
+  showOpenAI: false,
   launchAtStartup: false,
   startHidden: false,
 };

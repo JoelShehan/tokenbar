@@ -1,10 +1,10 @@
 # TokenBar privacy statement
 
-Applies to TokenBar 0.1.0. Updated September 16, 2026.
+Applies to TokenBar 0.1.1 (Windows x64). Updated October 7, 2026.
 
 ## What TokenBar reads
 
-- **Codex:** the installed CLI version, quota percentages, quota window durations and reset times, subscription plan, lifetime token count, and peak daily token count. TokenBar invokes the documented local `codex app-server` interface using `initialize`, `account/rateLimits/read`, and `account/usage/read`. The CLI may return additional account fields and daily activity buckets; TokenBar discards those before passing data to the widget. TokenBar does not request threads, messages, prompts, files, or conversation content.
+- **Codex:** the bundled helper version, quota percentages, quota window durations and reset times, subscription plan, lifetime token count, and peak daily token count. TokenBar invokes the documented local `codex app-server` interface using `initialize`, `account/read`, `account/rateLimits/read`, and `account/usage/read`; connection controls use `account/login/start`, `account/login/cancel`, and `account/logout`. The CLI may return additional account fields and daily activity buckets; TokenBar discards those before passing data to the widget. TokenBar does not request threads, messages, prompts, files, or conversation content.
 - **OpenAI API:** organization input/output token counts from `/v1/organization/usage/completions` and USD costs from `/v1/organization/costs`, covering the last 30 days. Connecting a key checks `/v1/organization/projects` for admin access; that response body is not read or stored. The API key is sent only as an authentication header to `https://api.openai.com`. Redirects are disabled.
 - **Device state:** window position, current monitor/work area for keeping the widget on screen, and OS autostart status. The widget reads its own preferences and app/runtime versions for diagnostics.
 
@@ -13,6 +13,7 @@ Applies to TokenBar 0.1.0. Updated September 16, 2026.
 | Data | Location and retention |
 | --- | --- |
 | OpenAI Admin API key | Windows Credential Manager or macOS Keychain, service `tokenbar`, account `openai-admin-key`, until you disconnect. No plaintext file, environment-variable, browser-storage, or fallback store is used. API credential storage is disabled on other operating systems. |
+| ChatGPT connection | The bundled Codex helper stores cached credentials in the OS credential store, scoped to TokenBar's separate `CODEX_HOME`, until disconnected. Tokens are not returned to the widget frontend or included in the installer. |
 | Key while entering or requesting | Temporarily in process memory. The input is cleared after each save attempt and on leaving the connection screen. Saved keys are never returned to the frontend. Memory is not guaranteed to be immune from OS paging, crash dumps, or inspection by privileged software. |
 | Usage values and safe error status | In application memory for the session. Last successful values remain available after a failed refresh with a stale label and their original timestamp. They are not persisted across app restarts. TokenBar does not maintain a usage database or write usage logs. |
 | Preferences | Webview local storage under `tokenbar-settings`, in the operating system's app webview profile. Only named preference fields are saved. |
@@ -20,11 +21,11 @@ Applies to TokenBar 0.1.0. Updated September 16, 2026.
 | Autostart preference | Managed by the OS through Tauri's autostart plugin. |
 | Copied diagnostics | Your system clipboard, only after you click Copy diagnostics. Includes versions, provider states, refresh times, selected preferences, and fixed error categories. Excludes keys, raw headers, response bodies, account identifiers, and usage totals. Clipboard history/sync follows your OS settings. |
 
-The Codex CLI independently manages its sign-in credentials, configuration, local files, and network activity. TokenBar neither reads its auth files directly nor changes its credential-storage settings. The native-keychain guarantee above concerns keys saved by TokenBar, not storage decisions made by another application.
+TokenBar bundles the official Codex helper and uses a separate `codex-connection` directory inside its own local app data. Cached ChatGPT credentials are managed by the helper with `cli_auth_credentials_store="keyring"`, requiring the OS credential store with no plaintext fallback. Analytics and feedback are disabled for this helper. TokenBar does not read other Codex installations or their authentication files. The helper may maintain its own local runtime metadata in this isolated directory. Browser sign-in opens only an official OpenAI/ChatGPT HTTPS URL returned by the helper and uses its local callback server.
 
 ## Network traffic and sharing
 
-TokenBar has **no application backend, analytics, telemetry, or automatic diagnostic uploads**. Retrieved usage is processed and displayed locally; TokenBar does not forward it to another service. It still makes authenticated requests to OpenAI to retrieve that usage. OpenAI receives those requests and ordinary connection metadata such as IP address; its handling is governed by its policies. Codex app-server makes its own provider connections using the existing CLI sign-in.
+TokenBar has **no application backend, analytics, telemetry, or automatic diagnostic uploads**. Retrieved usage is processed and displayed locally; TokenBar does not forward it to another service. It still makes authenticated requests to OpenAI to retrieve that usage. OpenAI receives those requests and ordinary connection metadata such as IP address; its handling is governed by its policies. Codex app-server makes its own provider connections using the connection established inside TokenBar.
 
 Project, issue-report, and API-dashboard links open your browser only when clicked. TokenBar does not attach diagnostics or usage to those URLs or submit issue reports for you. If you paste copied diagnostics elsewhere, that is a separate disclosure you control.
 
@@ -38,4 +39,4 @@ Network and CLI responses are size-limited. Requests have timeouts; pagination i
 
 ## Removing data
 
-Use **Settings → API connection → Disconnect** to delete the saved Admin API key. Uninstalling may leave OS credentials and app data behind; disconnect first and remove the app's configuration/webview data if you also want to remove preferences. Clear copied diagnostics using your clipboard controls. Codex sign-in data is managed separately through Codex.
+Use **Settings → API connection → Disconnect** to delete the saved Admin API key. Uninstalling may leave OS credentials and app data behind; disconnect first and remove the app's configuration/webview data if you also want to remove preferences. Clear copied diagnostics using your clipboard controls. Use **Settings → Codex connection → Disconnect Codex** to remove the saved widget connection. This does not sign out any separate Codex installation. Uninstall may leave this connection behind, so disconnect before uninstalling.
