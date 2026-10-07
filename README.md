@@ -1,10 +1,10 @@
-﻿# TokenBar
+# TokenBar
 
 A small Windows desktop widget for real Codex subscription usage and OpenAI organization API totals, built with Tauri, React, and TypeScript.
 
 ## Use
 
-- Codex uses the locally installed CLI and its existing sign-in. No extra API key is needed for subscription quotas.
+- The Windows widget includes Codex. Click Connect Codex and sign in with ChatGPT in your browser. No terminal or separate CLI installation is needed.
 - Connect an OpenAI organization Admin API key in Settings for API tokens and costs. API usage is separate from ChatGPT subscription usage.
 - Collapse to a small summary, use a denser expanded layout, or hide to the tray. Window position and preferences are saved locally.
 - About includes version information, project links, and copyable diagnostics.
@@ -13,6 +13,7 @@ A small Windows desktop widget for real Codex subscription usage and OpenAI orga
 
 ```text
 npm install
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-codex.ps1
 npm run tauri dev
 ```
 

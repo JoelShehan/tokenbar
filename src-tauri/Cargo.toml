@@ -1,6 +1,6 @@
 [package]
 name = "tokenbar"
-version = "0.1.0"
+version = "0.1.1"
 description = "A desktop widget for Codex and OpenAI API usage"
 authors = ["Yowel Shehan Alahakoon"]
 edition = "2021"

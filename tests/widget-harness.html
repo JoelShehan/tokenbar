@@ -2,11 +2,22 @@
 <body><div id="root"></div><script type="module">
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
+const fresh = new URLSearchParams(location.search).has("fresh");
+if (!fresh && !localStorage.getItem("tokenbar-settings")) localStorage.setItem("tokenbar-settings", JSON.stringify({ showOpenAI: true }));
 const fixture = window.fixture = { mode: "connected", codexMode: null, apiMode: null, calls: [], startup: false, scale: 1, missingMonitor: false, position: { x: 100, y: 100 }, area: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1040 } } };
+if (fresh) fixture.codexMode = "auth";
+let finishLogin;
 window.emitTestEvent = emit;
 mockWindows("main");
 mockIPC(async (cmd, args) => {
   fixture.calls.push({ cmd, args });
+  if (cmd === "codex_account_connected") return !fresh;
+  if (cmd === "connect_codex") {
+    await new Promise((resolve, reject) => { finishLogin = { resolve, reject }; fixture.finishLogin = () => { fixture.codexMode = "connected"; resolve(); }; });
+    return;
+  }
+  if (cmd === "cancel_codex_login") { finishLogin?.reject("Sign-in cancelled"); return; }
+  if (cmd === "disconnect_codex") { fixture.codexMode = "auth"; return; }
   if (cmd === "plugin:window|set_size") { await window.resizeNative(args.value.toJSON().Logical); return; }
   if (cmd === "plugin:window|outer_size") return { width: innerWidth * fixture.scale, height: innerHeight * fixture.scale };
   if (cmd === "plugin:window|outer_position") return fixture.position;

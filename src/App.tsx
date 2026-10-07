@@ -13,6 +13,7 @@ import Preferences from "./components/Preferences";
 import OpenAIConnection from "./components/OpenAIConnection";
 import ProviderCard from "./components/ProviderCard";
 import About from "./components/About";
+import CodexConnection from "./components/CodexConnection";
 import { safeError } from "./services/responseValidation";
 import "./App.css";
 
@@ -31,6 +32,10 @@ export default function App() {
   const [online, setOnline] = useState(navigator.onLine);
   const [displayRevision, setDisplayRevision] = useState(0);
   const [settingsBusy, setSettingsBusy] = useState(false);
+  const [codexBusy, setCodexBusy] = useState(false);
+  const [codexDisconnecting, setCodexDisconnecting] = useState(false);
+  const [codexAccountConnected, setCodexAccountConnected] = useState(false);
+  const [codexMessage, setCodexMessage] = useState("");
   const contentRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -38,6 +43,14 @@ export default function App() {
   const resizeQueue = useRef<Promise<void>>(Promise.resolve());
   const startupDone = useRef(false);
   const initialHidden = useRef(settings.startHidden);
+
+  useEffect(() => {
+    let disposed = false;
+    void invoke<boolean>("codex_account_connected").then(connected => {
+      if (!disposed) setCodexAccountConnected(connected);
+    }).catch(() => {});
+    return () => { disposed = true; };
+  }, []);
 
   const refresh = useCallback((force = true) => {
     if (activeRefresh.current) return activeRefresh.current;
@@ -157,6 +170,45 @@ export default function App() {
     await refresh(true);
   };
 
+  const codexChanged = async () => {
+    await activeRefresh.current;
+    providerManager.invalidate("codex");
+    setProviders(previous => previous.filter(provider => provider.id !== "codex"));
+    await refresh(true);
+  };
+  const connectCodex = async () => {
+    if (codexBusy) return;
+    setCodexBusy(true);
+    setCodexMessage("");
+    try {
+      await invoke("connect_codex");
+      setCodexAccountConnected(true);
+      setCodexMessage("Connected. Reading your usage…");
+      await codexChanged();
+    } catch (error) {
+      const value = typeof error === "string" ? error : "";
+      setCodexMessage(value === "Sign-in cancelled" ? "Sign-in cancelled." : /timed out/.test(value) ? "Sign-in timed out. Click Connect Codex to try again." : /credential store/.test(value) ? "Windows could not securely save your connection. Please try again." : "Could not connect. Please try signing in again.");
+    } finally { setCodexBusy(false); }
+  };
+  const disconnectCodex = async () => {
+    if (codexBusy) return;
+    // Finish any usage request before deleting the account's saved credentials.
+    setCodexBusy(true);
+    setCodexDisconnecting(true);
+    try {
+      await activeRefresh.current;
+      await invoke("disconnect_codex");
+      setCodexAccountConnected(false);
+      setCodexMessage("Disconnected.");
+      await codexChanged();
+    } catch { setCodexMessage("Could not disconnect. Please try again."); }
+    finally { setCodexBusy(false); setCodexDisconnecting(false); }
+  };
+  const codexConnected = providers.some(provider => provider.id === "codex" && provider.connected);
+  const codexConnection = <CodexConnection connected={codexAccountConnected || codexConnected} busy={codexBusy} disconnecting={codexDisconnecting} message={codexMessage}
+    onConnect={() => void connectCodex()} onCancel={() => void invoke("cancel_codex_login").catch(() => setCodexMessage("Could not cancel. Please try again."))}
+    onDisconnect={() => void disconnectCodex()} />;
+
   useEffect(() => {
     let cancelled = false;
     resizeQueue.current = resizeQueue.current.catch(() => {}).then(async () => {
@@ -199,7 +251,7 @@ export default function App() {
       if (!initialHidden.current) void appWindow.show();
     });
     return () => { cancelled = true; };
-  }, [collapsed, screen, providers, refreshing, lastAttempt, notice, displayRevision, online, settings.compactMode, settings.showCodex, settings.showOpenAI]);
+  }, [collapsed, screen, providers, refreshing, lastAttempt, notice, displayRevision, online, settings.compactMode, settings.showCodex, settings.showOpenAI, codexBusy, codexMessage]);
 
   const visible = providers.filter(provider => provider.id === "codex" ? settings.showCodex : settings.showOpenAI);
   const primary = visible.find(provider => provider.connected && provider.state !== "unavailable") ?? visible.find(provider => provider.stale);
@@ -234,6 +286,7 @@ export default function App() {
             : !visible.length ? <div className="empty-state" role="status">Reading your usage…</div>
             : visible.map(provider => <ProviderCard key={provider.id} provider={provider} />)}
         </div>
+        {settings.showCodex && (!codexConnected || codexBusy) && codexConnection}
         <footer className="widget-footer" aria-live="polite">
           <span>{refreshing ? "Refreshing…" : updated ? `${visible.some(p => p.stale) ? "Last success" : "Updated"} ${new Date(updated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "No successful update"}</span>
           {errors.length > 0 && <button className="text-button" onClick={() => navigate("about")}>Details</button>}
@@ -243,7 +296,8 @@ export default function App() {
         {screen === "settings" ? <>
           <h1>Make it yours</h1><p className="section-description">Preferences save automatically.</p>
           <fieldset disabled={settingsBusy}><Preferences settings={settings} onChange={next => void changeSettings(next)} /></fieldset>
-          <h2>API connection</h2><OpenAIConnection onConnectionChange={() => void connectionChanged()} />
+          <h2>Codex connection</h2>{codexConnection}
+          <h2>API connection (optional)</h2><OpenAIConnection onConnectionChange={() => void connectionChanged()} />
           <h2>Window</h2><p className="section-description">Drag the header to move TokenBar. Your position is remembered. Closing the window keeps it in the tray.</p>
           <div className="action-row"><button onClick={hide}>Hide to tray</button><button onClick={() => void invoke("quit_app").catch(() => setNotice("Could not quit. Try the tray menu."))}>Quit TokenBar</button></div>
         </> : <About providers={visible} errors={errors} lastAttempt={lastAttempt} settings={settings} />}

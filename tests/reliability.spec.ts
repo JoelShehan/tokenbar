@@ -71,7 +71,7 @@ test.describe("desktop event handling", () => {
     await expect(page.getByText("No usage", { exact: true })).toBeVisible();
     await page.evaluate(() => { (window as any).fixture.codexMode = "missing"; });
     await page.getByRole("button", { name: "Refresh usage" }).click();
-    await expect(page.getByText("Install Codex", { exact: false })).toBeVisible();
+    await expect(page.getByText("The included Codex connection is unavailable.", { exact: false })).toBeVisible();
     await expect(page.getByText("34% left")).toHaveCount(0);
   });
 

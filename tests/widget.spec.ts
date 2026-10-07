@@ -82,7 +82,7 @@ test("missing providers are actionable and moving saves position", async ({ page
     await (window as any).emitTestEvent("tauri://move", { x: 300, y: 200 });
     await (window as any).emitTestEvent("refresh-usage");
   });
-  await expect(page.getByText("Install Codex", { exact: false })).toBeVisible();
+  await expect(page.getByText("The included Codex connection is unavailable.", { exact: false })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as any).fixture.calls.some((call: any) => call.cmd === "plugin:window-state|save_window_state"))).toBe(true);
   await page.evaluate(() => (window as any).emitTestEvent("navigate", "about"));
   await expect(page.getByRole("heading", { name: "Diagnostics" })).toBeVisible();

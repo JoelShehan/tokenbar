@@ -43,8 +43,8 @@ export default function About({ providers, errors, lastAttempt, settings }: {
     {message && <p role="status" className="section-description">{message}</p>}
     <h2>Privacy</h2>
     <p className="section-description">TokenBar reads Codex quota percentages, reset times, plan, lifetime and peak daily token totals through the documented local CLI app-server. It reads organization API token counts and USD costs directly from OpenAI. It does not read your conversations or project files.</p>
-    <p className="section-description">Usage is held in memory on this device. TokenBar has no backend, analytics, or automatic diagnostic uploads. OpenAI receives authenticated requests to supply your usage; your Codex CLI manages its own authentication and network traffic.</p>
-    <p className="section-description">Admin keys are stored only in Windows Credential Manager or macOS Keychain, and briefly held in memory while entered or used. Preferences live in local webview storage; window position lives in the app configuration directory. Disconnect removes the saved API key.</p>
+    <p className="section-description">Usage is held in memory on this device. TokenBar has no backend, analytics, or automatic diagnostic uploads. OpenAI receives authenticated requests to supply your usage; the included Codex helper manages authentication and network traffic for this widget.</p>
+    <p className="section-description">Admin keys are stored only in Windows Credential Manager or macOS Keychain, and briefly held in memory while entered or used. Preferences live in local webview storage; window position lives in the app configuration directory. Disconnect removes the selected connection. Codex credentials use the OS credential store with a separate TokenBar account cache.</p>
     <p className="section-description">Copy diagnostics writes to your system clipboard only when clicked. External links open your browser. A future backend would require an explicit product change and an updated privacy statement.</p>
   </section>;
 }

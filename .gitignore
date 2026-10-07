@@ -24,3 +24,6 @@ playwright-report
 *.njsproj
 *.sln
 *.sw?
+
+/vendor-download/
+/src-tauri/resources/codex/codex.exe

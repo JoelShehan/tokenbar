@@ -1,4 +1,4 @@
-use std::process::Command;
+mod codex_connection;
 mod codex_response;
 mod codex_usage;
 mod security;
@@ -77,7 +77,7 @@ struct CostAmount {
 
 #[tauri::command]
 async fn is_codex_installed() -> bool {
-    get_codex_version().await.is_some()
+    codex_connection::command().is_ok()
 }
 
 #[tauri::command]
@@ -90,13 +90,7 @@ async fn get_codex_version() -> Option<String> {
 
 fn read_codex_version() -> Option<String> {
     use std::io::Read;
-    let executable = if cfg!(target_os = "windows") {
-        "codex.exe"
-    } else {
-        "codex"
-    };
-
-    let mut command = Command::new(executable);
+    let mut command = codex_connection::command().ok()?;
     command
         .arg("--version")
         .stdout(std::process::Stdio::piped())
@@ -315,6 +309,7 @@ async fn read_openai_usage() -> Result<OpenAiUsageSummary, String> {
 fn quit_app(app: tauri::AppHandle) -> Result<(), String> {
     // A persistence failure must never prevent an explicit quit.
     let _ = app.save_window_state(StateFlags::POSITION);
+    codex_connection::shutdown();
     app.exit(0);
     Ok(())
 }
@@ -341,6 +336,7 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            codex_connection::configure(app)?;
             let show_item = MenuItem::with_id(app, "show", "Show TokenBar", true, None::<&str>)?;
 
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -427,6 +423,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             quit_app,
+            codex_connection::connect_codex,
+            codex_connection::cancel_codex_login,
+            codex_connection::disconnect_codex,
+            codex_connection::codex_account_connected,
             is_codex_installed,
             get_codex_version,
             codex_usage::get_codex_usage,
